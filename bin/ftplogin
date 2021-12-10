@@ -1,0 +1,172 @@
+#!/usr/bin/python
+
+from ftplib import FTP_TLS, Error
+# import ftplib
+
+# from subprocess import *
+
+
+# helper
+
+class App:
+    actions = [
+        {
+            'name': str,
+            'method': (),
+        },
+    ]
+
+    hostname = ''
+    username = ''
+    password = ''
+    conn = FTP_TLS()
+
+
+    def __init__(self, creds):
+       self.conn = FTP_TLS(creds['hostname'], creds['username'], creds['password'])
+       self.hostname = creds['hostname']
+       self.username = creds['username']
+       self.password = creds['password']
+
+    
+    def render(self):
+        print('Welcome back {}! Please choose one of the following options:\n'.format(self.username))
+
+        self.showActions()
+
+        self.promptUserAction()
+        
+    
+    def showActions(self):
+        for i in range(len(self.actions)):
+            print('[{0}] - {1}'.format(i, self.actions[i]['name']))
+
+        print('\r\n')
+
+    def promptUserAction(self):
+        flag = True
+
+        while flag:
+            try:
+                useraction = input('Enter an option number: ')
+                
+                if useraction >= len(self.actions):
+                    raise ValueError()
+                else:
+                    flag = False
+            except(TypeError, NameError, KeyboardInterrupt, ValueError, SyntaxError):
+                print('Invalid input!\n')
+            else:
+                print('Action: {}\n'.format(app.actions[useraction]['name']))
+                app.actions[useraction]['method']()
+    
+
+    def getServerDirectoryFiles(self):
+        print('Fetching files...\n')
+        try:
+            response = self.conn.retrlines('LIST')
+        except Error as e:
+            print('Server error: {}\n'.format(e))
+            raise Error()
+        else:
+            print('Files fetched!\n')
+            print(response)
+
+
+
+    def loginUser(self):
+        print('Authenticating user {}\n'.format(self.username))
+        try:
+            response = app.conn.login(self.username, self.password)
+        except Error as e:
+            print('Authentication error: {}\n'.format(e))
+            print('Exiting...\r\n')
+        else:
+            print('Authentication complete: {}\n'.format(response))
+            self.render()
+
+
+
+    def viewFilesAction(self):
+        try:
+            self.getServerDirectoryFiles()
+        except Error as e:
+            print('Please restart the app.')
+        else:
+            print('Choose next course of action')
+            self.promptUserAction()
+    
+
+
+    def downloadAction(self):
+        self.getServerDirectoryFiles()
+        inputFiles = [_ for _ in str(input('Input file name to download (separate multiple names with comma): ')).split(',')]
+        print(inputFiles)
+        # for i in range(0, len(inputFiles)):
+        #     print(inputFiles[i])
+
+    
+
+    def quitApp(self):
+        print('Logging out...\n')
+        try:
+            response = self.conn.quit()
+        except Error as e:
+            print('Error occured while logging out.\nError: {}'.format(e))
+        else:
+            print('Log out successful!\n{}\r\n'.format(response))
+    
+
+    def uploadAction(self):
+        print('Select local files to upload')
+
+
+        
+
+# main
+
+if __name__ == '__main__':
+
+    credentials = {
+        'hostname': '',
+        'username': '',
+        'password': '',
+    }
+
+    print('Initializing...\n')
+    app = App(credentials)
+
+    actions = [
+        {
+            'name': 'View files',
+            'method': app.viewFilesAction,
+        },
+        {
+            'name': 'Upload',
+            'method': app.uploadAction,
+        },
+        {
+            'name': 'Download',
+            'method': app.downloadAction,
+        },
+        {
+            'name': 'Quit',
+            'method': app.quitApp,
+        }
+    ]
+
+    setattr(app, 'actions', actions)
+    print('App initialized.\n')
+
+    try:
+        print('Connecting to host server {}\n'.format(app.hostname))
+        connection = app.conn.connect()
+    except (Error) as e:
+        print('Connection error: {}\n'.format(e))
+        print('Exiting...\r\n')
+    else:
+        print('Host ready! Message from host: {}\n'.format(connection))
+        app.loginUser()
+
+
+
