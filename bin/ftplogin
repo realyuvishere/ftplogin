@@ -1,9 +1,14 @@
-#!/usr/bin/python
+#!/usr/local/bin/python3.7
 
-from ftplib import FTP_TLS, Error
-# import ftplib
+import os
+import json
 
 # from subprocess import *
+from ftplib import FTP_TLS, Error
+from getpass import getpass
+from base64 import b64encode, b64decode, decode
+from cryptography.fernet import Fernet, InvalidToken
+import hashlib as hl
 
 
 # helper
@@ -27,8 +32,45 @@ class App:
        self.hostname = creds['hostname']
        self.username = creds['username']
        self.password = creds['password']
-
     
+    def start(self):
+
+        print('Initializing...\n')
+
+        actions = [
+            {
+                'name': 'View files',
+                'method': self.viewFilesAction,
+            },
+            {
+                'name': 'Upload',
+                'method': self.uploadAction,
+            },
+            {
+                'name': 'Download',
+                'method': self.downloadAction,
+            },
+            {
+                'name': 'Quit',
+                'method': self.exit,
+            }
+        ]
+
+        self.actions = actions
+
+        print('App initialized.\n')
+    
+        try:
+            print('Connecting to host server {}\n'.format(self.hostname))
+            connection = self.conn.connect()
+        except (Error) as e:
+            print('Connection error: {}\n'.format(e))
+            print('Exiting...\r\n')
+        else:
+            print('Host ready! Message from host: {}\n'.format(connection))
+            self.loginUser()
+    
+
     def render(self):
         print('Welcome back {}! Please choose one of the following options:\n'.format(self.username))
 
@@ -43,12 +85,13 @@ class App:
 
         print('\r\n')
 
+
     def promptUserAction(self):
         flag = True
 
         while flag:
             try:
-                useraction = input('Enter an option number: ')
+                useraction = int(input('Enter an option number: '))
                 
                 if useraction >= len(self.actions):
                     raise ValueError()
@@ -57,8 +100,8 @@ class App:
             except(TypeError, NameError, KeyboardInterrupt, ValueError, SyntaxError):
                 print('Invalid input!\n')
             else:
-                print('Action: {}\n'.format(app.actions[useraction]['name']))
-                app.actions[useraction]['method']()
+                print('Action: {}\n'.format(self.actions[useraction]['name']))
+                self.actions[useraction]['method']()
     
 
     def getServerDirectoryFiles(self):
@@ -73,11 +116,10 @@ class App:
             print(response)
 
 
-
     def loginUser(self):
         print('Authenticating user {}\n'.format(self.username))
         try:
-            response = app.conn.login(self.username, self.password)
+            response = self.conn.login(self.username, self.password)
         except Error as e:
             print('Authentication error: {}\n'.format(e))
             print('Exiting...\r\n')
@@ -107,7 +149,7 @@ class App:
 
     
 
-    def quitApp(self):
+    def exit(self):
         print('Logging out...\n')
         try:
             response = self.conn.quit()
@@ -121,52 +163,136 @@ class App:
         print('Select local files to upload')
 
 
+class User:
+    storePath = ''
+    
+    def __init__(self):
+        self.storePath = '{}/.ftplogin_python/'.format(os.path.expanduser('~'))
+    
+    def authenticate(self):
+        # print('Authenticate karna hai abhi ruko')
+        passcode = str(getpass('Enter the passcode: '))
+
+        file = open(os.path.join(self.storePath, 'user.json'))
+        data = json.load(file)
+        file.close()
+
+        if passcode == decryptItem(passcode, data['authCode'].encode()):
+            try:
+                user = {
+                    'hostname': decryptItem(passcode, bytes(data['hostname'], 'utf-8')),
+                    'username': decryptItem(passcode, bytes(data['username'], 'utf-8')),
+                    'password': decryptItem(passcode, bytes(data['password'], 'utf-8')),
+                }
+            except Error:
+                print('Error while authenticating, please try again.')
+                raise Error()
+            else:
+                return user
+        else:
+            print('Passcode doesn\'t match.')
+            raise Error()
+    
+    def config(self):
+        print('''
+        Welcome to the configuration setup for ftplogin utility.
+        ''')
+
+        hostname = str(input('Enter hostname: '))
+        username = str(input('Enter username: '))
+        password = str(input('Enter password: '))
+
+        print('Great! You are almost there. Please enter a strong passcode which will be required everytime you use this utility. This is for your own security.\r\n')
+
+        authCode = str(input('Set a passcode for using this utility:'))
+
+        credentials = {
+            'hostname': encryptItems(authCode, hostname).decode(),
+            'username': encryptItems(authCode, username).decode(),
+            'password': encryptItems(authCode, password).decode(),
+            'authCode': encryptItems(authCode, authCode).decode(),
+        }
+
+        json_credentials = json.dumps(credentials)
+
+        print('Saving the changes...')
+
+        with open(os.path.join(self.storePath, 'user.json'), 'w') as outfile:
+            outfile.write(json_credentials)
         
+        print('Configuration setup complete! Please restart the software to continue.')
+        
+
+
+def encryptItems(key, string):
+    key = bytes(key, 'utf-8')
+
+    m = hl.md5()
+    m.update(key)
+    key = m.hexdigest().encode()
+
+    key = b64encode(key)
+    fer = Fernet(key)
+    string = fer.encrypt(bytes(string, 'utf-8'))
+    string = b64encode(string)
+    return string
+
+
+def decryptItem(key, string):
+    key = bytes(key, 'utf-8')
+
+    m = hl.md5()
+    m.update(key)
+    key = m.hexdigest().encode()
+
+    key = b64encode(key)
+    string = b64decode(string)
+    fer = Fernet(key)
+
+    try:
+        string = fer.decrypt(string)
+    except InvalidToken as e:
+        raise Error()
+    
+    string = string.decode('utf-8')
+    return string
 
 # main
 
 if __name__ == '__main__':
-
-    credentials = {
-        'hostname': '',
-        'username': '',
-        'password': '',
-    }
-
-    print('Initializing...\n')
-    app = App(credentials)
-
-    actions = [
-        {
-            'name': 'View files',
-            'method': app.viewFilesAction,
-        },
-        {
-            'name': 'Upload',
-            'method': app.uploadAction,
-        },
-        {
-            'name': 'Download',
-            'method': app.downloadAction,
-        },
-        {
-            'name': 'Quit',
-            'method': app.quitApp,
-        }
-    ]
-
-    setattr(app, 'actions', actions)
-    print('App initialized.\n')
-
-    try:
-        print('Connecting to host server {}\n'.format(app.hostname))
-        connection = app.conn.connect()
-    except (Error) as e:
-        print('Connection error: {}\n'.format(e))
-        print('Exiting...\r\n')
+    
+    user = User()
+    
+    if (not os.path.isdir(user.storePath)):
+        os.umask
+        os.mkdir(user.storePath, 0o777)
+        try:
+            user.config()
+        except Error as e:
+            os.remove(user.storePath)
+            print('Please retry.')
     else:
-        print('Host ready! Message from host: {}\n'.format(connection))
-        app.loginUser()
+        
+        print('''
+        Welcome to FTP Login Utility. Please choose an action.
+        ''')
+        print('[0]: Authenticate and work')
+        print('[1]: Enter configuration')
+        print('\r\n')
 
+        userFirstInteraction = int(input('Enter the digit: '))
+
+        if userFirstInteraction == 0:
+            
+            try:
+                credentials = user.authenticate()
+            except Error:
+                print('Error in authenticating user. Please try again.')
+            else:
+                app = App(credentials)
+                app.start()
+            
+        elif userFirstInteraction == 1:
+            user.config()
 
 
