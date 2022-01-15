@@ -1,12 +1,16 @@
 #!/usr/local/bin/python3.7
 
+from fileinput import filename
+from http import server
 import os
 import json
+import sys, getopt as gopt
 
-# from subprocess import *
+import subprocess as sp
+
 from ftplib import FTP_TLS, Error
 from getpass import getpass
-from base64 import b64encode, b64decode, decode
+from base64 import b64encode, b64decode
 from cryptography.fernet import Fernet, InvalidToken
 import hashlib as hl
 
@@ -128,7 +132,6 @@ class App:
             self.render()
 
 
-
     def viewFilesAction(self):
         try:
             self.getServerDirectoryFiles()
@@ -139,16 +142,15 @@ class App:
             self.promptUserAction()
     
 
-
     def downloadAction(self):
         self.getServerDirectoryFiles()
-        inputFiles = [_ for _ in str(input('Input file name to download (separate multiple names with comma): ')).split(',')]
+        inputFiles = [str(_).strip() for _ in str(input('Input file name to download (separate multiple names with comma): ')).split(',')]
         print(inputFiles)
-        # for i in range(0, len(inputFiles)):
-        #     print(inputFiles[i])
+        # for i in inputFiles:
+        #     item = os.path.realpath(i)
+        #     parseLocalFile(item)  
 
     
-
     def exit(self):
         print('Logging out...\n')
         try:
@@ -160,6 +162,53 @@ class App:
     
 
     def uploadAction(self):
+        conn = self.conn
+
+        userDir = os.getcwd()
+        userDirInput = str(input('Enter path to a directory other than your current one (optional): '))
+
+        if userDirInput != '':
+            if userDirInput.startswith('~'):
+                userDirInput = os.path.join(os.path.expanduser('~'), userDirInput[2:])
+
+            userDir = os.path.realpath(userDirInput)
+        
+        # Lists of files on both server and local machine
+        serverFilesList = conn.nlst()
+        localFilesList = os.listdir(userDir)
+        
+        # Total number of rows of the table, considering the maximum length of either of the lists
+        num_rows = max(len(serverFilesList), len(localFilesList))
+
+
+        print(f'|\tServer ({conn.pwd()})\t|\tLocal ({userDir})\t|')
+
+        # Longest word in both the lists for better indentation etc (probably will deprecate)
+
+        longestServerWord = len(max(serverFilesList, key=len))
+        longestLocalWord = len(max(localFilesList, key=len))
+
+        for i in range(0, num_rows):
+
+            if i >= len(serverFilesList):
+
+                print(f'|{insertSpaces(longestServerWord)}|{localFilesList[i]}{insertSpaces(longestLocalWord - len(localFilesList[i]))}|')
+
+            elif i >= len(localFilesList):
+
+                print(f'|{serverFilesList[i]}{insertSpaces(longestServerWord - len(serverFilesList[i]))}|{insertSpaces(longestLocalWord)}|')
+
+            else:
+
+                print(f'|{serverFilesList[i]}{insertSpaces(longestServerWord - len(serverFilesList[i]))}|{localFilesList[i]}{insertSpaces(longestLocalWord - len(localFilesList[i]))}|')
+
+        inputFiles = [str(_).strip() for _ in str(input('Input file name to upload (separate multiple names with comma): ')).split(',')]
+
+        print(inputFiles)
+
+        for i in inputFiles:
+            item = os.path.realpath(i)
+            parseLocalFile(item)
         print('Select local files to upload')
 
 
@@ -257,11 +306,34 @@ def decryptItem(key, string):
     string = string.decode('utf-8')
     return string
 
+
+def parseLocalFile(item):
+    if os.path.isdir(item):
+        # dirName = os.path.basename(item)
+        itemsList = os.listdir(item)
+        for i in itemsList:
+            parseLocalFile(os.path.realpath(i))
+
+    print(item)
+
+
+def insertSpaces(num):
+    spaces = ' '
+    spaces *= num
+    return spaces
+
 # main
 
 if __name__ == '__main__':
     
     user = User()
+
+    givenArguments = sys.argv[1:]
+    options = 'u:v:hdn'
+    long_options = ['user=', 'verbose=', 'help', 'dev', 'new']
+
+
+    # print(os.path.realpath(newFile))
     
     if (not os.path.isdir(user.storePath)):
         os.umask
