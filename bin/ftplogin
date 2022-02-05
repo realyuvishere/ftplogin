@@ -1,12 +1,13 @@
-#!/usr/local/bin/python3.7
+#!/usr/bin/env python3.7
 
-from fileinput import filename
-from http import server
 import os
 import json
 import sys, getopt as gopt
 
 import subprocess as sp
+
+# import readline
+# import pathlib
 
 from ftplib import FTP_TLS, Error
 from getpass import getpass
@@ -143,12 +144,70 @@ class App:
     
 
     def downloadAction(self):
-        self.getServerDirectoryFiles()
-        inputFiles = [str(_).strip() for _ in str(input('Input file name to download (separate multiple names with comma): ')).split(',')]
-        print(inputFiles)
-        # for i in inputFiles:
-        #     item = os.path.realpath(i)
-        #     parseLocalFile(item)  
+        # self.getServerDirectoryFiles()
+        conn = self.conn
+
+        userDir = os.getcwd()
+        userDirInput = str(input('Enter path to a directory other than your current one (optional): '))
+
+
+        if userDirInput != '':
+            
+            if userDirInput.startswith('~'):
+                userDirInput = os.path.join(os.path.expanduser('~'), userDirInput[2:])
+            
+            os.chdir(userDirInput)
+
+            userDir = os.path.realpath(userDirInput)
+        
+        # Lists of files on both server and local machine
+        serverFilesList = conn.nlst()
+        localFilesList = os.listdir(userDir)
+
+        num_rows = max(len(serverFilesList), len(localFilesList))
+
+
+        print(f'|\tServer ({conn.pwd()})\t|\tLocal ({userDir})\t|')
+
+        # Longest word in both the lists for better indentation etc (probably will deprecate)
+
+        longestServerWord = len(max(serverFilesList, key=len))
+        longestLocalWord = len(max(localFilesList, key=len))
+
+        for i in range(0, num_rows):
+
+            if i >= len(serverFilesList):
+
+                print(f'|{insertSpaces(longestServerWord)}|{localFilesList[i]}{insertSpaces(longestLocalWord - len(localFilesList[i]))}|')
+
+            elif i >= len(localFilesList):
+
+                print(f'|{serverFilesList[i]}{insertSpaces(longestServerWord - len(serverFilesList[i]))}|{insertSpaces(longestLocalWord)}|')
+
+            else:
+
+                print(f'|{serverFilesList[i]}{insertSpaces(longestServerWord - len(serverFilesList[i]))}|{localFilesList[i]}{insertSpaces(longestLocalWord - len(localFilesList[i]))}|')
+
+        inputFiles = [str(_).strip() for _ in str(input('Input file name to download (separate multiple names with comma): ')).split(',')] 
+
+        # print(inputFiles)
+
+        for i in inputFiles:
+            try:
+                with open(i, 'wb') as file:
+                    response = conn.retrbinary(f'RETR {i}', file.write)
+            
+            except Error as e:
+                print('Server error: {}\n'.format(e))
+                raise Error()
+            else:
+                print(f'File \'{i}\' downloaded!\n')
+                print(response)
+                file.close()
+                print('Choose next course of action')
+                self.promptUserAction()
+
+
 
     
     def exit(self):
@@ -167,9 +226,13 @@ class App:
         userDir = os.getcwd()
         userDirInput = str(input('Enter path to a directory other than your current one (optional): '))
 
+
         if userDirInput != '':
+            
             if userDirInput.startswith('~'):
                 userDirInput = os.path.join(os.path.expanduser('~'), userDirInput[2:])
+            
+            os.chdir(userDirInput)
 
             userDir = os.path.realpath(userDirInput)
         
@@ -204,12 +267,29 @@ class App:
 
         inputFiles = [str(_).strip() for _ in str(input('Input file name to upload (separate multiple names with comma): ')).split(',')]
 
-        print(inputFiles)
+        # print(inputFiles)
 
         for i in inputFiles:
+            
+            if not i.startswith('./'):
+                i = f'./{i}'
+            
             item = os.path.realpath(i)
-            parseLocalFile(item)
-        print('Select local files to upload')
+
+            try:
+                fp = open(item, 'rb')
+                response = conn.storbinary(f'STOR {os.path.basename(item)}', fp)
+            except Error as e:
+                print('Server error: {}\n'.format(e))
+                raise Error()
+            else:
+                print(f'File \'{os.path.basename(item)}\' uploaded!\n')
+                print(response)
+                fp.close()
+                print('Choose next course of action')
+                self.promptUserAction()
+            
+            # print(parseLocalFile(item))
 
 
 class User:
@@ -309,7 +389,9 @@ def decryptItem(key, string):
 
 def parseLocalFile(item):
     if os.path.isdir(item):
-        # dirName = os.path.basename(item)
+        print('The input is a directory with the following items inside it:')
+
+        dirName = os.path.basename(item)
         itemsList = os.listdir(item)
         for i in itemsList:
             parseLocalFile(os.path.realpath(i))
